@@ -1,0 +1,41 @@
+# Raw and derived data
+/data/raw/**
+/data/interim/**
+/data/processed/**
+!/data/raw/.gitkeep
+!/data/interim/.gitkeep
+!/data/processed/.gitkeep
+
+# Large scientific files
+*.mat
+*.edf
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.tdt
+*.sev
+*.tev
+*.tsq
+*.mp4
+*.avi
+
+# Generated outputs
+/results/
+/figures/
+*.fig
+*.asv
+
+# MATLAB
+slprj/
+codegen/
+*.autosave
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local configuration
+config/paths_local.m

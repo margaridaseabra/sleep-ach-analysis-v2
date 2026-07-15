@@ -1,0 +1,2 @@
+session_id,date,mouse_id,genotype,sex,age_days,condition,replicate,recording_file,scoring_file,photometry_variable,photometry_is_preprocessed,temperature_file,temperature_offset_s,zt_start,include_session,notes
+YYYYMMDD_mXXX_condition_rXX,YYYY-MM-DD,mXXX,WT_or_APPPS1,F_or_M,100,baseline_or_ambtemp_or_donepezil,1,data/raw/SESSION/recording.mat,data/raw/SESSION/final_scoring.csv,ne,true,,0,3,true,""

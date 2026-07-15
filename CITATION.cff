@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+title: "Sleep-ACh analysis pipeline v2"
+message: "Please cite the associated thesis or publication when using this analysis workflow."
+type: software
+authors:
+  - family-names: "Seabra Gomes"
+    given-names: "Margarida"
+version: 0.1.0
+date-released: 2026-07-14
