@@ -71,3 +71,22 @@ python -m unittest discover -s tests -p 'test_ymaze_pipeline.py'
 ```
 
 Never commit animal-level raw data or generated analysis outputs unless approved by the lab; keep them in ignored `data/raw/` and `data/processed/` directories.
+
+
+## Descriptive behavioral follow-up outputs
+
+The pipeline also writes `recognition_descriptive_summary.csv` (both time- and entry-based preference),
+`locomotion_association_descriptive.csv` (within genotype/condition movement associations;
+only calculated when at least five mice are available), `within_mouse_condition_changes.csv`
+(only true paired mouse records), `paired_condition_preference.png`, and
+`behavior_findings.md` (generated descriptive interpretation safeguards).
+`spindle_matching_keys.csv` gives the exact animal IDs and condition keys that still need
+mouse-matched EEG spindle and PAC features.
+
+Manual QC exclusions requested following the first review are recorded in
+`config/ymaze_exclusions.csv`; these are specific to `m67 baseline`, `m89 baseline`,
+and `m78 ambtemp`. These are provisional analysis exclusions, not proof that
+individual test videos are invalid. Together with `m73` pending possible duplicate
+review and `m91` low-tracking automatic QC, the current dataset retains only one
+APP/PS1 baseline test. Therefore, baseline genotype comparisons and warming rescue
+claims cannot be supported by this reduced behavioral sample.
