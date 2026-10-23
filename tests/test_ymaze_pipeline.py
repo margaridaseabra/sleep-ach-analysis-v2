@@ -78,6 +78,21 @@ class YMazeTests(unittest.TestCase):
         from numpy import array
         self.assertAlmostEqual(ymaze.exact_permutation_p(array([1, 2]), array([5, 6])), 2 / 6)
 
+
+    def test_recognition_summary_respects_individual_pairs(self):
+        d = ymaze.load_behavior(self.source)
+        # m2's QC failure leaves m1 as the only baseline mouse.
+        # m3 and m4 are also unpaired, so output must have no artificial pairs.
+        q = ymaze.apply_qc(d, None)
+        ymaze.summarize_recognition(q.loc[q.included], self.folder)
+        paired = pd.read_csv(self.folder / 'within_mouse_condition_changes.csv')
+        self.assertEqual(len(paired), 0)
+        summaries = pd.read_csv(self.folder / 'recognition_descriptive_summary.csv')
+        self.assertEqual(int(summaries.loc[(summaries.condition == 'baseline') &
+                                           (summaries.genotype == 'WT'), 'n_mice'].iloc[0]), 1)
+        text = (self.folder / 'behavior_findings.md').read_text()
+        self.assertIn('fewer than 2 mice', text)
+
     def test_spindle_join_rejects_duplicate_animal_sessions(self):
         s = pd.DataFrame({'mouse_id': ['m1', 'm1'], 'condition': ['baseline', 'baseline'],
                           'spindle_density': [4, 5]})
