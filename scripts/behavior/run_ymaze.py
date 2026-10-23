@@ -221,6 +221,110 @@ def plot_behavior_diagnostics(data: pd.DataFrame, out: Path) -> None:
     plt.close(fig)
 
 
+
+def summarize_recognition(data: pd.DataFrame, out: Path) -> None:
+    """Descriptive recognition and within-animal comparisons, no model fitting."""
+    rows = []
+    def optional_mean(group, column):
+        return group[column].mean() if column in group.columns else float('nan')
+    for (condition, genotype), g in data.groupby(['condition', 'genotype']):
+        rows.append({
+            'condition': condition, 'genotype': genotype, 'n_mice': len(g),
+            'mean_novel_time_preference_pct': g.novel_preference_pct.mean(),
+            'median_novel_time_preference_pct': g.novel_preference_pct.median(),
+            'n_above_50_pct_time': int((g.novel_preference_pct > 50).sum()),
+            'mean_novel_entry_preference_pct': optional_mean(g, 'novel_entry_preference_pct'),
+            'mean_total_distance_m': optional_mean(g, 'total_distance_m'),
+            'mean_total_arm_entries': optional_mean(g, 'total_arm_entries'),
+        })
+    summary = pd.DataFrame(rows)
+    summary.to_csv(out / 'recognition_descriptive_summary.csv', index=False)
+
+    # Restrict pair-wise response comparisons to within-animal complete pairs.
+    # Retain genotype in index to guard against accidentally collapsing subjects.
+    pair = data.pivot(index=['mouse_id', 'genotype'], columns='condition',
+                      values='novel_preference_pct')
+    if {'baseline', 'ambtemp'}.issubset(pair.columns):
+        pair = pair.dropna(subset=['baseline', 'ambtemp']).reset_index()
+        pair['delta_ambtemp_minus_baseline_pct_points'] = pair.ambtemp - pair.baseline
+    else:
+        pair = pd.DataFrame(columns=['mouse_id', 'genotype', 'baseline', 'ambtemp',
+                                     'delta_ambtemp_minus_baseline_pct_points'])
+    pair.to_csv(out / 'within_mouse_condition_changes.csv', index=False)
+
+    # Movement may influence time preference; report rank correlations as
+    # descriptive QC diagnostics, without using them to filter observations.
+    from scipy.stats import spearmanr
+    movement_rows = []
+    for (condition, genotype), g in data.groupby(['condition', 'genotype']):
+        for metric in ('total_distance_m', 'total_arm_entries'):
+            if metric not in g.columns:
+                continue
+            sub = g[['novel_preference_pct', metric]].dropna()
+            rho = float('nan')
+            if len(sub) >= 5 and sub[metric].nunique() > 1 and sub.novel_preference_pct.nunique() > 1:
+                rho = float(spearmanr(sub.novel_preference_pct, sub[metric]).statistic)
+            movement_rows.append({'condition': condition, 'genotype': genotype,
+                                  'locomotion_metric': metric, 'n_mice': len(sub),
+                                  'spearman_rho_descriptive': rho})
+    movement = pd.DataFrame(movement_rows)
+    movement.to_csv(out / 'locomotion_association_descriptive.csv', index=False)
+    data[['mouse_id', 'condition', 'genotype']].to_csv(
+        out / 'spindle_matching_keys.csv', index=False)
+
+    lines = [
+        '# Y-maze recognition: automated descriptive findings', '',
+        'These findings are **exploratory**, based on the included mouse-level test trials.',
+        'Novel-arm preference = 100 * novel time / (novel + familiar time).',
+        'A value above 50% is descriptive, not proof of memory in an individual mouse.', '',
+        '## Group summaries', '',
+        '| Condition | Genotype | n | Mean time preference | Mean entry preference | Above 50% |',
+        '|---|---|---:|---:|---:|---:|',
+    ]
+    for _, r in summary.iterrows():
+        lines.append(f"| {r['condition']} | {r['genotype']} | {int(r['n_mice'])} | "
+                     f"{r['mean_novel_time_preference_pct']:.1f}% | "
+                     f"{r['mean_novel_entry_preference_pct']:.1f}% | "
+                     f"{int(r['n_above_50_pct_time'])}/{int(r['n_mice'])} |")
+    lines += ['', '## Interpretation safeguards', '']
+    baseline_app_n = len(data[(data.condition == 'baseline') & (data.genotype == 'APP/PS1')])
+    if baseline_app_n < 2:
+        lines.append('- Baseline APP/PS1 has fewer than 2 mice: genotype inferential testing is not supported.')
+    lines.append('- Do not interpret between-condition group differences as a warming-induced memory rescue without suitable pairing/counterbalancing.')
+    lines.append('- Group averages may be distorted by very long arm visits or reduced locomotion; compare entry preference and travel distance.')
+    lines.append('- Y-maze-to-spindle correlations require mouse-matched EEG metrics and appropriate temporal alignment.')
+    lines += ['', '## Complete within-animal pairs', '']
+    if len(pair):
+        lines.append('| Mouse | Genotype | Baseline | Ambtemp | Difference (pp) |')
+        lines.append('|---|---|---:|---:|---:|')
+        for _, r in pair.iterrows():
+            lines.append(f"| {r['mouse_id']} | {r['genotype']} | "
+                         f"{r['baseline']:.1f}% | {r['ambtemp']:.1f}% | "
+                         f"{r['delta_ambtemp_minus_baseline_pct_points']:+.1f} |")
+    else:
+        lines.append('No complete paired baseline/ambtemp records.')
+    lines += ['', '## Preference versus locomotion (descriptive Spearman rho)', '']
+    for _, r in movement.dropna(subset=['spearman_rho_descriptive']).iterrows():
+        lines.append(f"- {r['condition']} {r['genotype']}, n={int(r['n_mice'])}: "
+                     f"{r['locomotion_metric']} rho={r['spearman_rho_descriptive']:.2f}")
+    (out / 'behavior_findings.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+    if not pair.empty:
+        fig, ax = plt.subplots(figsize=(5.3, 4.5))
+        for _, r in pair.iterrows():
+            color = 'steelblue' if r['genotype'] == 'APP/PS1' else 'gray'
+            ax.plot([0, 1], [r['baseline'], r['ambtemp']], '-o', color=color, alpha=.8)
+            ax.annotate(r['mouse_id'], (.02, r['baseline']), fontsize=9,
+                        ha='left', va='bottom')
+        ax.axhline(50, color='black', ls='--', alpha=.5)
+        ax.set_xticks([0, 1], ['Baseline', 'Ambient-temperature group'])
+        ax.set_ylabel('Novel-arm preference (%)')
+        ax.set_ylim(0, 100)
+        ax.set_title('Within-mouse comparisons (paired records only)')
+        fig.tight_layout()
+        fig.savefig(out / 'paired_condition_preference.png', dpi=200)
+        plt.close(fig)
+
 def link_spindles(data: pd.DataFrame, spindle_file: Path,
                   out: Path, min_n: int = 5) -> None:
     sp = pd.read_csv(spindle_file)
@@ -275,6 +379,7 @@ def main() -> None:
     group, comparisons = group_tables(clean)
     group.to_csv(args.output / 'group_descriptives.csv', index=False)
     comparisons.to_csv(args.output / 'genotype_exploratory_permutation.csv', index=False)
+    summarize_recognition(clean, args.output)
     plot_preferences(clean, args.output / 'novel_preference.png')
     if 'novel_entry_preference_pct' in clean and 'total_distance_m' in clean:
         plot_behavior_diagnostics(clean, args.output / 'behavior_diagnostics.png')
