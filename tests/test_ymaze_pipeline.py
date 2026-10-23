@@ -47,6 +47,21 @@ class YMazeTests(unittest.TestCase):
         self.assertIn('manual:duplicate_pending_review', qc.loc[2, 'qc_reason'])
         self.assertTrue(qc.loc[3, 'included'])  # 50% is not a QC failure
 
+    def test_zone_time_discrepancies_are_reviewed_not_excluded(self):
+        d = ymaze.load_behavior(self.source)
+        d['start_time_s'] = [90., 90., 40., 70.]
+        d['center_time_s'] = [110., 110., 20., 30.]
+        # Totals: 300, 300, 160, 300. Only m3 needs review.
+        qc = ymaze.apply_qc(d, exclusions=None)
+        self.assertEqual(qc.zone_time_review_needed.tolist(), [False, False, True, False])
+        self.assertTrue(qc.loc[2, 'included'])
+        self.assertAlmostEqual(qc.loc[2, 'zone_gap_s'], 140.)
+
+    def test_missing_zone_columns_do_not_trigger_exclusion(self):
+        d = ymaze.load_behavior(self.source)
+        qc = ymaze.apply_qc(d, exclusions=None)
+        self.assertFalse(qc.zone_time_review_needed.any())
+
     def test_full_export_column_mapping_and_uniqueness(self):
         c = self.rows.rename(columns={'tracking_pct': 'Percentage of frames tracked (%)',
                                        'novel_time_s': 'Time in the novel arm zone (s)',
