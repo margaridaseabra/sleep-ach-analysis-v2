@@ -1,0 +1,76 @@
+"""Run with: python -m unittest discover -s tests -p 'test_ymaze_pipeline.py'."""
+import importlib.util
+import tempfile
+import unittest
+from pathlib import Path
+
+import pandas as pd
+
+SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/behavior/run_ymaze.py'
+spec = importlib.util.spec_from_file_location('run_ymaze', SCRIPT)
+ymaze = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ymaze)
+
+
+class YMazeTests(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tempdir.cleanup)
+        self.folder = Path(self.tempdir.name)
+        self.rows = pd.DataFrame({
+            'mouse_id': ['m1', 'm2', 'm3', 'm4'],
+            'condition': ['baseline', 'baseline', 'ambtemp', 'ambtemp'],
+            'genotype': ['WT', 'APP/PS1', 'WT', 'APP/PS1'],
+            'tracking_pct': [99., 22., 98., 97.],
+            'novel_time_s': [80., 10., 25., 100.],
+            'familiar_time_s': [20., 90., 75., 100.],
+            'novel_entries': [8, 1, 4, 5],
+            'familiar_entries': [2, 7, 6, 5],
+            'start_entries': [5, 5, 5, 5],
+        })
+        self.source = self.folder / 'input.csv'
+        self.rows.to_csv(self.source, index=False)
+
+    def test_preference_and_discrimination(self):
+        d = ymaze.load_behavior(self.source)
+        self.assertAlmostEqual(d.loc[0, 'novel_preference_pct'], 80.)
+        self.assertAlmostEqual(d.loc[0, 'discrimination_index'], .6)
+        self.assertAlmostEqual(d.loc[0, 'novel_entry_preference_pct'], 80.)
+
+    def test_qc_only_tracking_and_explicit_exclusions(self):
+        d = ymaze.load_behavior(self.source)
+        ex = self.folder / 'exclude.csv'
+        ex.write_text('mouse_id,condition,reason\nm3,*,duplicate_pending_review\n')
+        qc = ymaze.apply_qc(d, ex)
+        self.assertEqual(qc.included.tolist(), [True, False, False, True])
+        self.assertIn('low_tracking', qc.loc[1, 'qc_reason'])
+        self.assertIn('manual:duplicate_pending_review', qc.loc[2, 'qc_reason'])
+        self.assertTrue(qc.loc[3, 'included'])  # 50% is not a QC failure
+
+    def test_full_export_column_mapping_and_uniqueness(self):
+        c = self.rows.rename(columns={'tracking_pct': 'Percentage of frames tracked (%)',
+                                       'novel_time_s': 'Time in the novel arm zone (s)',
+                                       'familiar_time_s': 'Time in the familiar arm zone (s)'})
+        c.to_csv(self.source, index=False)
+        self.assertEqual(len(ymaze.load_behavior(self.source)), 4)
+        c.loc[3, 'mouse_id'] = 'm1'
+        c.loc[3, 'condition'] = 'baseline'
+        c.to_csv(self.source, index=False)
+        with self.assertRaises(ValueError):
+            ymaze.load_behavior(self.source)
+
+    def test_exact_permutation(self):
+        from numpy import array
+        self.assertAlmostEqual(ymaze.exact_permutation_p(array([1, 2]), array([5, 6])), 2 / 6)
+
+    def test_spindle_join_rejects_duplicate_animal_sessions(self):
+        s = pd.DataFrame({'mouse_id': ['m1', 'm1'], 'condition': ['baseline', 'baseline'],
+                          'spindle_density': [4, 5]})
+        path = self.folder / 'sp.csv'
+        s.to_csv(path, index=False)
+        with self.assertRaises(ValueError):
+            ymaze.link_spindles(ymaze.load_behavior(self.source), path, self.folder)
+
+
+if __name__ == '__main__':
+    unittest.main()
