@@ -75,9 +75,27 @@ def load_behavior(path: Path) -> pd.DataFrame:
 
 
 def apply_qc(data: pd.DataFrame, exclusions: Path | None,
-             min_tracking: float = 90.0, min_exploration_s: float = 30.) -> pd.DataFrame:
+             min_tracking: float = 90.0, min_exploration_s: float = 30.,
+             expected_duration_s: float = 300.,
+             max_zone_gap_fraction: float = .05) -> pd.DataFrame:
     data = data.copy()
     data['qc_reason'] = ''
+    # Zone-time completeness is a *review warning*, not an automatic exclusion.
+    # The four zones should approximately partition the nominal 300-s trial.
+    # This assumption needs checking against the AnyMaze zone layout and video.
+    zone_cols = ['start_time_s', 'novel_time_s', 'familiar_time_s', 'center_time_s']
+    if all(c in data.columns for c in zone_cols):
+        zones = data[zone_cols].apply(pd.to_numeric, errors='coerce')
+        data['zone_time_sum_s'] = zones.sum(axis=1, min_count=len(zone_cols))
+        data['zone_gap_s'] = expected_duration_s - data.zone_time_sum_s
+        data['zone_coverage_pct'] = 100 * data.zone_time_sum_s / expected_duration_s
+        data['zone_time_review_needed'] = (data.zone_time_sum_s.isna() |
+            (data.zone_gap_s.abs() > expected_duration_s * max_zone_gap_fraction))
+    else:
+        data['zone_time_sum_s'] = np.nan
+        data['zone_gap_s'] = np.nan
+        data['zone_coverage_pct'] = np.nan
+        data['zone_time_review_needed'] = False
     def flag(mask, reason):
         data.loc[mask, 'qc_reason'] += reason + ';'
     flag(data.tracking_pct.isna() | (data.tracking_pct < min_tracking), 'low_tracking')
@@ -170,6 +188,39 @@ def plot_preferences(data: pd.DataFrame, path: Path) -> None:
     plt.close(fig)
 
 
+def plot_behavior_diagnostics(data: pd.DataFrame, out: Path) -> None:
+    """Show time- versus entry-based preference and locomotor activity.
+
+    Diagnostic scatter plots only; no statistical outlier removal.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
+    for genotype, color in [('WT', 'gray'), ('APP/PS1', 'steelblue')]:
+        g = data[data.genotype == genotype]
+        axes[0].scatter(g.novel_preference_pct, g.novel_entry_preference_pct,
+                        label=genotype, color=color, s=46)
+        axes[1].scatter(g.total_distance_m, g.novel_preference_pct,
+                        label=genotype, color=color, s=46)
+        for _, row in g.iterrows():
+            axes[0].annotate(f"{row.mouse_id} ({row.condition})",
+                             (row.novel_preference_pct, row.novel_entry_preference_pct),
+                             xytext=(3, 3), textcoords='offset points', fontsize=7)
+            axes[1].annotate(f"{row.mouse_id} ({row.condition})",
+                             (row.total_distance_m, row.novel_preference_pct),
+                             xytext=(3, 3), textcoords='offset points', fontsize=7)
+    axes[0].axhline(50, ls='--', color='black', alpha=.3)
+    axes[0].axvline(50, ls='--', color='black', alpha=.3)
+    axes[0].set(xlabel='Novel preference by time (%)',
+                ylabel='Novel preference by arm entries (%)', xlim=(0, 100), ylim=(0, 100))
+    axes[1].axhline(50, ls='--', color='black', alpha=.3)
+    axes[1].set(xlabel='Total distance travelled (m)',
+                ylabel='Novel preference by time (%)', ylim=(0, 100))
+    axes[0].legend(frameon=False, fontsize=8)
+    fig.suptitle('Y-maze exploratory activity diagnostics (included records)')
+    fig.tight_layout()
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+
+
 def link_spindles(data: pd.DataFrame, spindle_file: Path,
                   out: Path, min_n: int = 5) -> None:
     sp = pd.read_csv(spindle_file)
@@ -210,11 +261,14 @@ def main() -> None:
     parser.add_argument('--exclusions', type=Path,
                         default=Path('config/ymaze_exclusions.csv'))
     parser.add_argument('--spindles', type=Path, help='Optional matched mouse/condition spindle features CSV')
+    parser.add_argument('--trial-duration', type=float, default=300.,
+                        help='Nominal test duration in seconds (default: 300)')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     raw = load_behavior(args.input)
-    qc = apply_qc(raw, args.exclusions)
+    qc = apply_qc(raw, args.exclusions, expected_duration_s=args.trial_duration)
     qc.to_csv(args.output / 'qc_all_trials.csv', index=False)
+    qc.loc[qc.zone_time_review_needed].to_csv(args.output / 'qc_zone_review.csv', index=False)
     clean = qc[qc.included].copy()
     clean.to_csv(args.output / 'ymaze_included.csv', index=False)
     qc.loc[~qc.included].to_csv(args.output / 'ymaze_excluded.csv', index=False)
@@ -222,10 +276,18 @@ def main() -> None:
     group.to_csv(args.output / 'group_descriptives.csv', index=False)
     comparisons.to_csv(args.output / 'genotype_exploratory_permutation.csv', index=False)
     plot_preferences(clean, args.output / 'novel_preference.png')
+    if 'novel_entry_preference_pct' in clean and 'total_distance_m' in clean:
+        plot_behavior_diagnostics(clean, args.output / 'behavior_diagnostics.png')
     if args.spindles:
         link_spindles(clean, args.spindles, args.output)
     print(f'Test records {len(qc)}; included {len(clean)}; excluded {len(qc) - len(clean)}')
     print(qc.loc[~qc.included, ['mouse_id', 'condition', 'qc_reason']].to_string(index=False))
+    n_review = int(qc.zone_time_review_needed.sum())
+    print(f'Zone-time consistency: {n_review} record(s) flagged for manual review (not automatically excluded)')
+    if n_review:
+        print(qc.loc[qc.zone_time_review_needed,
+                     ['mouse_id', 'condition', 'zone_time_sum_s', 'zone_gap_s', 'included']]
+              .to_string(index=False))
     print(f'Wrote {args.output}')
 
 
