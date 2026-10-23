@@ -21,7 +21,15 @@ python scripts/behavior/run_ymaze.py \
 
 Automatically exclude tracking `<90%` and total novel+familiar exploration `<30 s`, or invalid arm times; record all reasons in `qc_all_trials.csv`. The explicit exclusions CSV removes **both** m73 records pending original-video verification because their measurements are virtually identical across conditions. The low-tracking m91 baseline record is removed automatically. Low preference is **never** a reason to exclude an animal. Manual exclusions must be documented, not chosen based on resulting genotype effects or correlations.
 
-Output files: `qc_all_trials.csv`, `ymaze_included.csv`, `ymaze_excluded.csv`, `group_descriptives.csv`, `genotype_exploratory_permutation.csv`, `novel_preference.png`. Re-running replaces derived files, not source data. The statistical permutation test compares genotypes **within** each condition only. Different conditions share some mice, so these cross-condition records cannot be treated as independent.
+### Zone-time review (added after examining the 23 AnyMaze records)
+
+With a nominal 300-second test, the sum of **novel + familiar + start + center** time should approximately account for the trial *if* the four AnyMaze zones form a nonoverlapping partition. The pipeline now computes `zone_time_sum_s`, `zone_gap_s`, `zone_coverage_pct`, and a `zone_time_review_needed` flag; the default trigger is more than 5% of expected duration (15 seconds). You can change the assumed trial duration with `--trial-duration 300`. **Zone-time flags are warnings only; they do not exclude mice.** Inspect the zone layout, the original video, actual trial length, and source reports before deciding whether a missing/excess zone sum is a real tracking artifact.
+
+In the supplied test set, the warnings affect: m89 baseline APP/PS1 (104.1 s accounted for), m67 baseline APP/PS1 (186.9 s), m78 ambient APP/PS1 (263.6 s), and both already-excluded m73 records (~319 s; likely overlapping zones or duplicated processing). Their high frame-tracking percentages do not establish that arm-zone measures are valid. Removing m67 and m89 immediately would leave just one APP/PS1 mouse at baseline; do not drop them based only on the sums.
+
+The additional `behavior_diagnostics.png` contrasts time-based versus entry-based novelty preference, and distance travelled versus time preference. Long visits or low movement can explain discrepancies between the two preference measures (e.g. m79 baseline WT: about 9% of arm time but 71% of novel+familiar entries), without constituting an automatic exclusion criterion.
+
+Output files: `qc_all_trials.csv`, `qc_zone_review.csv`, `ymaze_included.csv`, `ymaze_excluded.csv`, `group_descriptives.csv`, `genotype_exploratory_permutation.csv`, `novel_preference.png`, and `behavior_diagnostics.png`. Re-running replaces derived files, not source data. The statistical permutation test compares genotypes **within** each condition only. Different conditions share some mice, so these cross-condition records cannot be treated as independent.
 
 ## Outcome definitions
 
