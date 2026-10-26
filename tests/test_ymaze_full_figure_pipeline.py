@@ -1,13 +1,18 @@
 """Run with: python -m unittest discover -s . -p 'test_ymaze_full_figure_pipeline.py'"""
 import unittest
 import tempfile
+import sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
+SCRIPT=Path(__file__).resolve().parents[1]/'scripts/behavior/ymaze_full_figure_pipeline.py'
+if not SCRIPT.exists(): SCRIPT=Path(__file__).resolve().with_name('ymaze_full_figure_pipeline.py')
+sys.path.insert(0,str(SCRIPT.parent))
 from ymaze_full_figure_pipeline import (load_and_prepare, calculate_stats,
     exact_permutation, exact_sign_flip, bh_fdr, run)
 
-DATA=Path(__file__).resolve().parents[1]/'Ymaze_AnyMaze_all_measures.csv'
+DATA=Path(__file__).resolve().parents[1]/'data/raw/ymaze/Ymaze_AnyMaze_all_measures.csv'
+if not DATA.exists(): DATA=Path(__file__).resolve().parents[1]/'Ymaze_AnyMaze_all_measures.csv'
 
 class TestPipeline(unittest.TestCase):
     def test_exact_p(self):
@@ -18,6 +23,7 @@ class TestPipeline(unittest.TestCase):
         q=bh_fdr([.01,.1,np.nan,.02])
         self.assertTrue(np.isnan(q[2]))
         self.assertTrue(np.allclose(q[[0,1,3]],[.03,.1,.03]))
+    @unittest.skipUnless(DATA.exists(),'Full AnyMaze CSV not present; run with test data in data/raw/ymaze')
     def test_qc_and_groups(self):
         d,q=load_and_prepare(DATA)
         self.assertEqual(len(d),17)
@@ -27,6 +33,7 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(d.groupby(['condition','genotype']).size().to_dict(),{
             ('baseline','WT'):7,('baseline','APP/PS1'):1,
             ('ambtemp','WT'):6,('ambtemp','APP/PS1'):3})
+    @unittest.skipUnless(DATA.exists(),'Full AnyMaze CSV not present; run with test data in data/raw/ymaze')
     def test_statistics(self):
         d,_=load_and_prepare(DATA)
         desc,comp,pair,ch=calculate_stats(d)
@@ -38,6 +45,7 @@ class TestPipeline(unittest.TestCase):
         p=pair[(pair.genotype=='WT')&(pair.metric=='novel_preference_pct')].iloc[0]
         self.assertEqual(int(p.n_pairs),3)
         self.assertTrue('m76' in p.paired_mouse_ids)
+    @unittest.skipUnless(DATA.exists(),'Full AnyMaze CSV not present; run with test data in data/raw/ymaze')
     def test_export_files(self):
         with tempfile.TemporaryDirectory() as td:
             out=Path(td)
