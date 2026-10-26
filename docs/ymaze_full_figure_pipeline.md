@@ -51,4 +51,4 @@ Cross-genotype exact permutation tests are run separately within each condition.
 
 FDR q-values are exploratory and calculated separately within `secondary_memory`, `exploratory`, and all raw AnyMaze-field families. The broad raw screen is post hoc and should never be presented as an independently validated finding. Significant-looking p-values from these analyses are hypothesis generating, especially given prior feature searching. These mice are separate from the spindle cohort—no direct spindle–memory correlation or mechanism can be inferred.
 
-Tests can be run with `python -m unittest test_ymaze_full_figure_pipeline.py` from a directory containing a copy of the original CSV one level above.
+Tests can be run from the repo root with `python -m unittest discover -s tests -p 'test_ymaze_full_figure_pipeline.py' -v`. The raw-data tests run when the original CSV exists at `data/raw/ymaze/Ymaze_AnyMaze_all_measures.csv`; otherwise those tests are skipped, while tests of the permutation/FDR helpers still run.
