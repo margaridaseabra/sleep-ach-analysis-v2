@@ -1,0 +1,5 @@
+mouse_id,condition,reason
+m73,*,near_identical_test_records_across_conditions_pending_video_review
+m67,baseline,zone_time_gap_exceeds_review_threshold_user_exclusion
+m89,baseline,zone_time_gap_exceeds_review_threshold_user_exclusion
+m78,ambtemp,zone_time_gap_exceeds_review_threshold_user_exclusion
